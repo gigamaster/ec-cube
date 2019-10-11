@@ -3,9 +3,9 @@
 /*
  * This file is part of EC-CUBE
  *
- * Copyright(c) LOCKON CO.,LTD. All Rights Reserved.
+ * Copyright(c) EC-CUBE CO.,LTD. All Rights Reserved.
  *
- * http://www.lockon.co.jp/
+ * http://www.ec-cube.co.jp/
  *
  * For the full copyright and license information, please view the LICENSE
  * file that was distributed with this source code.
@@ -92,5 +92,15 @@ class RepeatedEmailTypeTest extends AbstractTypeTestCase
         $this->form->submit($this->formData);
 
         $this->assertTrue($this->form->isValid());
+    }
+
+    public function testInvalidEmail_MaxLength()
+    {
+        $mail = str_repeat("a", $this->eccubeConfig['eccube_stext_len'] - strlen('@example.com') + 1) . '@example.com';
+        $this->formData['email']['first'] = $mail;
+        $this->formData['email']['second'] = $mail;
+        $this->form->submit($this->formData);
+
+        $this->assertFalse($this->form->isValid());
     }
 }

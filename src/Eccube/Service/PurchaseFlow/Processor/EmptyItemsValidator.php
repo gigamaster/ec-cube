@@ -3,9 +3,9 @@
 /*
  * This file is part of EC-CUBE
  *
- * Copyright(c) LOCKON CO.,LTD. All Rights Reserved.
+ * Copyright(c) EC-CUBE CO.,LTD. All Rights Reserved.
  *
- * http://www.lockon.co.jp/
+ * http://www.ec-cube.co.jp/
  *
  * For the full copyright and license information, please view the LICENSE
  * file that was distributed with this source code.
@@ -46,7 +46,7 @@ class EmptyItemsValidator extends ItemHolderValidator
     protected function validate(ItemHolderInterface $itemHolder, PurchaseContext $context)
     {
         foreach ($itemHolder->getItems() as $item) {
-            if ($item->isProduct() && $item->getQuantity() == 0) {
+            if ($item->isProduct() && $item->getQuantity() <= 0) {
                 if ($itemHolder instanceof Order) {
                     foreach ($itemHolder->getShippings() as $Shipping) {
                         $Shipping->removeOrderItem($item);
