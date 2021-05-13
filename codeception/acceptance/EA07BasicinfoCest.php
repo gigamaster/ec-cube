@@ -15,6 +15,7 @@ use Page\Admin\CsvSettingsPage;
 use Page\Admin\DeliveryEditPage;
 use Page\Admin\DeliveryManagePage;
 use Page\Admin\MailSettingsPage;
+use Page\Admin\OrderStatusSettingsPage;
 use Page\Admin\PaymentEditPage;
 use Page\Admin\PaymentManagePage;
 use Page\Admin\ShopSettingPage;
@@ -221,15 +222,15 @@ class EA07BasicinfoCest
 
         // 一覧
         $I->see('税率設定', '#page_admin_setting_shop_tax > div.c-container > div.c-contentsArea > div.c-contentsArea__cols > div > div > div > div.card-header');
-        $I->see('8%', '#ex-tax_rule-1 > td.align-middle.text-right');
+        $I->see('10%', '#ex-tax_rule-1 > td.align-middle.text-right');
 
         // 登録
         $TaxManagePage
-            ->入力_消費税率(1, '10')
+            ->入力_消費税率(1, '8')
             ->入力_適用日(date('Y'), date('n'), date('j'))
             ->入力_適用時(date('G'), (int) date('i'))
             ->共通税率設定_登録();
-        $I->see('10%', $TaxManagePage->一覧_税率(2));
+        $I->see('8%', $TaxManagePage->一覧_税率(2));
 
         // edit
         $TaxManagePage
@@ -270,6 +271,20 @@ class EA07BasicinfoCest
             ->設定();
 
         $I->see('保存しました', CsvSettingsPage::$登録完了メッセージ);
+    }
+
+    public function basicinfo_受注対応状況設定(\AcceptanceTester $I)
+    {
+        $I->wantTo('EA0711-UC01-T01  受注対応状況設定');
+
+        // 表示
+        OrderStatusSettingsPage::go($I)
+            ->入力_名称_管理('新規受付')
+            ->入力_名称_マイページ('注文受付')
+            ->入力_色("#19406C")
+            ->登録();
+
+        $I->see('保存しました', OrderStatusSettingsPage::$登録完了メッセージ);
     }
 
     /**

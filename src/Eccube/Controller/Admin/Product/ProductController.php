@@ -173,7 +173,7 @@ class ProductController extends AbstractController
          * - デフォルト値
          * また, セッションに保存する際は mtb_page_maxと照合し, 一致した場合のみ保存する.
          **/
-        $page_count = $this->session->get('eccube.admin.order.search.page_count',
+        $page_count = $this->session->get('eccube.admin.product.search.page_count',
             $this->eccubeConfig->get('eccube_default_page_count'));
 
         $page_count_param = (int) $request->get('page_count');
@@ -183,7 +183,7 @@ class ProductController extends AbstractController
             foreach ($pageMaxis as $pageMax) {
                 if ($page_count_param == $pageMax->getName()) {
                     $page_count = $pageMax->getName();
-                    $this->session->set('eccube.admin.order.search.page_count', $page_count);
+                    $this->session->set('eccube.admin.product.search.page_count', $page_count);
                     break;
                 }
             }
@@ -374,6 +374,8 @@ class ProductController extends AbstractController
             $ProductStock->setProductClass($ProductClass);
         } else {
             $Product = $this->productRepository->find($id);
+            $ProductClass = null;
+            $ProductStock = null;
             if (!$Product) {
                 throw new NotFoundHttpException();
             }
@@ -513,7 +515,7 @@ class ProductController extends AbstractController
                         $count++;
                         /* @var $Product \Eccube\Entity\Product */
                         $Product->addProductCategory($ProductCategory);
-                        $categoriesIdList[$ParentCategory->getId()] = true;
+                        $categoriesIdList[$Category->getId()] = true;
                     }
                 }
 
@@ -535,22 +537,29 @@ class ProductController extends AbstractController
 
                 // 画像の削除
                 $delete_images = $form->get('delete_images')->getData();
+                $fs = new Filesystem();
                 foreach ($delete_images as $delete_image) {
-                    $ProductImage = $this->productImageRepository
-                        ->findOneBy(['file_name' => $delete_image]);
+                    $ProductImage = $this->productImageRepository->findOneBy([
+                        'Product' => $Product,
+                        'file_name' => $delete_image,
+                    ]);
 
-                    // 追加してすぐに削除した画像は、Entityに追加されない
                     if ($ProductImage instanceof ProductImage) {
                         $Product->removeProductImage($ProductImage);
                         $this->entityManager->remove($ProductImage);
-                    }
-                    $this->entityManager->persist($Product);
+                        $this->entityManager->flush();
 
-                    // 削除
-                    $fs = new Filesystem();
-                    $fs->remove($this->eccubeConfig['eccube_save_image_dir'].'/'.$delete_image);
+                        // 他に同じ画像を参照する商品がなければ画像ファイルを削除
+                        if (!$this->productImageRepository->findOneBy(['file_name' => $delete_image])) {
+                            $fs->remove($this->eccubeConfig['eccube_save_image_dir'] . '/' . $delete_image);
+                        }
+
+                    } else {
+                        // 追加してすぐに削除した画像は、Entityに追加されない
+                        $fs->remove($this->eccubeConfig['eccube_temp_image_dir'] . '/' . $delete_image);
+                    }
                 }
-                $this->entityManager->persist($Product);
+
                 $this->entityManager->flush();
 
                 $sortNos = $request->get('sort_no_images');
@@ -719,7 +728,11 @@ class ProductController extends AbstractController
                     $deleteImages = $event->getArgument('deleteImages');
 
                     // 画像ファイルの削除(commit後に削除させる)
+                    /** @var ProductImage $deleteImage */
                     foreach ($deleteImages as $deleteImage) {
+                        if ($this->productImageRepository->findOneBy(['file_name' => $deleteImage->getFileName()])) {
+                            continue;
+                        }
                         try {
                             $fs = new Filesystem();
                             $fs->remove($this->eccubeConfig['eccube_save_image_dir'].'/'.$deleteImage);

@@ -2,11 +2,6 @@ FROM php:7.3-apache-stretch
 
 ENV APACHE_DOCUMENT_ROOT /var/www/html
 
-RUN echo "deb http://cdn.debian.net/debian/ stretch main contrib non-free" > /etc/apt/sources.list.d/mirror.jp.list
-RUN echo "deb http://cdn.debian.net/debian/ stretch-updates main contrib" >> /etc/apt/sources.list.d/mirror.jp.list
-
-RUN /bin/rm /etc/apt/sources.list
-
 RUN apt-get update \
   && apt-get install --no-install-recommends -y \
     apt-transport-https \
@@ -16,6 +11,7 @@ RUN apt-get update \
     debconf-utils \
     gcc \
     git \
+    vim \
     gnupg2 \
     libfreetype6-dev \
     libicu-dev \
@@ -26,27 +22,31 @@ RUN apt-get update \
     locales \
     ssl-cert \
     unzip \
-    vim \
     zlib1g-dev \
   && apt-get clean \
   && rm -rf /var/lib/apt/lists/* \
   && echo "en_US.UTF-8 UTF-8" >/etc/locale.gen \
-  && locale-gen
+  && locale-gen \
+  ;
 
 RUN docker-php-ext-configure pgsql -with-pgsql=/usr/local/pgsql \
-  && docker-php-ext-install -j$(nproc) zip gd mysqli pdo_mysql opcache intl pgsql pdo_pgsql
+  && docker-php-ext-install -j$(nproc) zip gd mysqli pdo_mysql opcache intl pgsql pdo_pgsql \
+  ;
 
 RUN pecl install apcu && echo "extension=apcu.so" > /usr/local/etc/php/conf.d/apc.ini
 
-RUN mkdir -p ${APACHE_DOCUMENT_ROOT}
-RUN sed -ri -e 's!/var/www/html!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/sites-available/*.conf
-RUN sed -ri -e 's!/var/www/!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/apache2.conf /etc/apache2/conf-available/*.conf
+RUN curl -sL https://deb.nodesource.com/setup_12.x | bash - \
+  && apt-get install -y nodejs \
+  && apt-get clean \
+  ;
 
-RUN a2enmod rewrite
-RUN a2enmod headers
+RUN mkdir -p ${APACHE_DOCUMENT_ROOT} \
+  && sed -ri -e 's!/var/www/html!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/sites-available/*.conf \
+  && sed -ri -e 's!/var/www/!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/apache2.conf /etc/apache2/conf-available/*.conf \
+  ;
 
+RUN a2enmod rewrite headers ssl
 # Enable SSL
-RUN a2enmod ssl
 RUN ln -s /etc/apache2/sites-available/default-ssl.conf /etc/apache2/sites-enabled/default-ssl.conf
 EXPOSE 443
 
@@ -54,34 +54,55 @@ EXPOSE 443
 RUN mv "$PHP_INI_DIR/php.ini-production" "$PHP_INI_DIR/php.ini"
 # Override with custom configuration settings
 COPY dockerbuild/php.ini $PHP_INI_DIR/conf.d/
+COPY dockerbuild/docker-php-entrypoint /usr/local/bin/
+
+RUN chown www-data:www-data /var/www \
+  && mkdir -p ${APACHE_DOCUMENT_ROOT}/vendor \
+  && mkdir -p ${APACHE_DOCUMENT_ROOT}/var \
+  && chown www-data:www-data ${APACHE_DOCUMENT_ROOT}/vendor \
+  && chmod g+s ${APACHE_DOCUMENT_ROOT}/vendor
 
 RUN curl -sS https://getcomposer.org/installer \
   | php \
   && mv composer.phar /usr/bin/composer \
-  && composer config -g repos.packagist composer https://packagist.jp \
+  && composer selfupdate --1
+
+# 全体コピー前にcomposer installを先行完了させる(docker cache利用によるリビルド速度向上)
+USER www-data
+RUN composer config -g repos.packagist composer https://packagist.jp \
   && composer global require hirak/prestissimo
-
-ENV COMPOSER_ALLOW_SUPERUSER 1
-
-COPY . ${APACHE_DOCUMENT_ROOT}
-
-WORKDIR ${APACHE_DOCUMENT_ROOT}
-
+COPY composer.json ${APACHE_DOCUMENT_ROOT}/composer.json
+COPY composer.lock ${APACHE_DOCUMENT_ROOT}/composer.lock
 RUN composer install \
   --no-scripts \
   --no-autoloader \
-  --no-dev -d ${APACHE_DOCUMENT_ROOT} \
-  && chown -R www-data:www-data ${APACHE_DOCUMENT_ROOT} \
-  && chown www-data:www-data /var/www
+  -d ${APACHE_DOCUMENT_ROOT} \
+  ;
+
+##################################################################
+# ファイル変更時、以後のステップにはキャッシュが効かなくなる
+USER root
+COPY . ${APACHE_DOCUMENT_ROOT}
+WORKDIR ${APACHE_DOCUMENT_ROOT}
+
+RUN find ${APACHE_DOCUMENT_ROOT} \( -path ${APACHE_DOCUMENT_ROOT}/vendor -prune \) -or -print0 \
+  | xargs -0 chown www-data:www-data \
+  && find ${APACHE_DOCUMENT_ROOT} \( -path ${APACHE_DOCUMENT_ROOT}/vendor -prune \) -or \( -type d -print0 \) \
+  | xargs -0 chmod g+s \
+  ;
 
 USER www-data
-RUN composer dumpautoload -o --apcu --no-dev
+RUN composer dumpautoload -o --apcu
 
 RUN if [ ! -f ${APACHE_DOCUMENT_ROOT}/.env ]; then \
         cp -p .env.dist .env \
         ; fi
 
-RUN if [ ! -f ${APACHE_DOCUMENT_ROOT}/var/eccube.db ]; then \
+# trueを指定した場合、DBマイグレーションやECCubeのキャッシュ作成をスキップする。
+# ビルド時点でDBを起動出来ない場合等に指定が必要となる。
+ARG SKIP_INSTALL_SCRIPT_ON_DOCKER_BUILD=false
+
+RUN if [ ! -f ${APACHE_DOCUMENT_ROOT}/var/eccube.db ] && [ ! ${SKIP_INSTALL_SCRIPT_ON_DOCKER_BUILD} = "true" ]; then \
         composer run-script installer-scripts && composer run-script auto-scripts \
         ; fi
 

@@ -57,6 +57,10 @@ class OrderNoProcessor implements ItemHolderPreprocessor
                 return;
             }
 
+            if (null === $Order->getId()) {
+                return;
+            }
+
             $format = $this->eccubeConfig['eccube_order_no_format'];
             if (empty($format)) {
                 // フォーマットが設定されていなければ受注IDが設定される
@@ -65,15 +69,16 @@ class OrderNoProcessor implements ItemHolderPreprocessor
                 do {
                     $orderNo = preg_replace_callback('/\{(.*)}/U', function ($matches) use ($Order) {
                         if (count($matches) === 2) {
+                            $dateTime = new \DateTime('now', new \DateTimeZone($this->eccubeConfig->get('timezone')));
                             switch ($matches[1]) {
                                 case 'yyyy':
-                                    return date('Y');
+                                    return $dateTime->format('Y');
                                 case 'yy':
-                                    return date('y');
+                                    return $dateTime->format('y');
                                 case 'mm':
-                                    return date('m');
+                                    return $dateTime->format('m');
                                 case 'dd':
-                                    return date('d');
+                                    return $dateTime->format('d');
                                 default:
                                     $res = explode(',', str_replace(' ', '', $matches[1]));
                                     if (count($res) === 2 && is_numeric($res[1])) {

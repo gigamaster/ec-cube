@@ -33,6 +33,7 @@ use Eccube\Service\PurchaseFlow\PurchaseContext;
 use Eccube\Service\PurchaseFlow\PurchaseFlow;
 use Sensio\Bundle\FrameworkExtraBundle\Configuration\Template;
 use Symfony\Component\Form\FormInterface;
+use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\Routing\Annotation\Route;
 use Symfony\Component\Routing\RouterInterface;
@@ -123,8 +124,11 @@ class ShoppingController extends AbstractShoppingController
             log_info('[注文手続] Warningが発生しました.', [$flowResult->getWarning()]);
 
             // 受注明細と同期をとるため, CartPurchaseFlowを実行する
-            $cartPurchaseFlow->validate($Cart, new PurchaseContext());
-            $this->cartService->save();
+            $cartPurchaseFlow->validate($Cart, new PurchaseContext($Cart, $this->getUser()));
+
+            // 注文フローで取得されるカートの入れ替わりを防止する
+            // @see https://github.com/EC-CUBE/ec-cube/issues/4293
+            $this->cartService->setPrimary($Cart->getCartKey());
         }
 
         // マイページで会員情報が更新されていれば, Orderの注文者情報も更新する.
@@ -283,7 +287,7 @@ class ShoppingController extends AbstractShoppingController
                 }
 
                 $response = $PaymentResult->getResponse();
-                if ($response && ($response->isRedirection() || $response->getContent())) {
+                if ($response instanceof Response && ($response->isRedirection() || $response->isSuccessful())) {
                     $this->entityManager->flush();
 
                     log_info('[注文確認] PaymentMethod::verifyが指定したレスポンスを表示します.');
@@ -684,7 +688,7 @@ class ShoppingController extends AbstractShoppingController
         // 受注とカートのずれを合わせるため, カートのPurchaseFlowをコールする.
         $Cart = $this->cartService->getCart();
         if (null !== $Cart) {
-            $cartPurchaseFlow->validate($Cart, new PurchaseContext());
+            $cartPurchaseFlow->validate($Cart, new PurchaseContext($Cart, $this->getUser()));
             $this->cartService->setPreOrderId(null);
             $this->cartService->save();
         }
@@ -736,7 +740,7 @@ class ShoppingController extends AbstractShoppingController
             $this->entityManager->flush();
 
             // dispatcherがresponseを保持している場合はresponseを返す
-            if ($response && ($response->isRedirection() || $response->getContent())) {
+            if ($response instanceof Response && ($response->isRedirection() || $response->isSuccessful())) {
                 log_info('[注文処理] PaymentMethod::applyが指定したレスポンスを表示します.');
 
                 return $response;
@@ -771,7 +775,7 @@ class ShoppingController extends AbstractShoppingController
         $PaymentResult = $paymentMethod->checkout();
         $response = $PaymentResult->getResponse();
         // PaymentResultがresponseを保持している場合はresponseを返す
-        if ($response && ($response->isRedirection() || $response->getContent())) {
+        if ($response instanceof Response && ($response->isRedirection() || $response->isSuccessful())) {
             $this->entityManager->flush();
             log_info('[注文処理] PaymentMethod::checkoutが指定したレスポンスを表示します.');
 

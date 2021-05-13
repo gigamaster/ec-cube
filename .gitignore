@@ -17,6 +17,8 @@ composer.phar
 /app/template/*
 !/app/template/admin
 !/app/template/default
+!/app/template/user_data
+!/app/template/smartphone
 /app/proxy/entity/*
 !/app/proxy/entity/.gitkeep
 /html/plugin/*
@@ -39,9 +41,11 @@ composer.phar
 /tests/tmp/*
 /reports/*
 .idea
+.vscode/
 *.php~
 .env
 .maintenance
+*.neon
 
 ###> symfony/phpunit-bridge ###
 .phpunit
